@@ -1,0 +1,12 @@
+(ns reagent-sandbox.initialize)
+
+
+(defn initialize
+  ([{:keys [tags children] :as node}]
+   (let [f (transduce (map (fn [tag]
+                             (let [f (tag->fn tag)]
+                               ((f node) :init identity))))
+                      comp
+                      tags)]
+     (assoc (f node)
+            :children (mapv initialize children)))))

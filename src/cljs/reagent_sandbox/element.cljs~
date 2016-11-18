@@ -1,0 +1,114 @@
+(ns reagent-sandbox.element)
+
+
+(def base-element (with-meta [:div {}]
+                    {:dom-events #{}
+                     :xform (fn [rf]
+                              (fn ([] (rf))
+                                ([ret] (rf ret))
+                                ([ret msg]
+                                 (rf ret msg))))}))
+
+
+
+(defn add-key [elem]
+  (assoc-in elem [1 :key] (:ident (meta elem))))
+
+
+(defn element [& fns]
+  {:render (fn [elem]
+             (let [child ((apply comp add-key fns) base-element)]
+               (conj elem child)))})
+
+
+(defn transform
+  ([pred] (fn [rf]
+            (fn ([] (rf))
+              ([ret] (rf ret))
+              ([ret x]
+               (if (pred (second x))
+                 (rf ret x)
+                 (conj ret x))))))
+  ([pred xf]
+   (comp (transform pred) xf))
+  ([pred f elem]
+   (into (subvec elem 0 2)
+         (transform pred f)
+         (subvec elem 2)))
+  ([pred f elem & {:keys [recursive]}]
+   (letfn [(walk [elem]
+             (into (subvec elem 2)
+                   (transform pred f)
+                   (map walk (subvec elem 2))))]
+     (if recursive
+       (walk elem)
+       (transform pred f elem)))))
+
+
+
+(defn attr [k v & kvs]
+  {:render (fn [elem]
+             (apply update elem 1 assoc k v kvs))})
+
+
+(defn style [k v & kvs]
+  {:render (fn [elem]
+             (apply update-in elem [1 :style] assoc k v kvs))})
+
+
+(defn tag [name]
+  {:render (fn [elem]
+             (assoc elem 0 name))})
+
+
+
+;; can we get isa? dispatch? Use a multi-method?
+;; Put partial predicates in a set? Extremely slow.
+
+#_#{(partial isa? :a)
+    (partial isa? :b)
+    (partial isa? :c)}
+#_(cond (isa? :b :a)
+        (isa? :c :a)
+        (isa? :d :a))
+
+(defn on [k f & kfs]
+  (let [event-map (apply assoc {} k f kfs)
+        xform
+        (fn [rf]
+          (fn
+            ([] (rf))
+            ([ret] (rf ret))
+            ([ret msg]
+             (if-let [f (event-map (:name msg))]
+               (rf ret (f msg))
+               (rf ret msg)))))]
+    {:init (fn [node]
+             (-> (vary-meta node
+                            update
+                            :dom-events
+                            clojure.set/union
+                            (set (keys event-map)))
+                 (vary-meta update :xform comp xform)))}))
+
+
+
+;; Resizing is a function associated with an
+;; element. The function is defined on the
+;; element's descendants. The function is called
+;; when a particular child source event is
+;; dragged. Thus, the child must send a message
+;; to the parent that applies a transform based
+;; on the parent's value and position of the
+;; source element.
+
+;; The message relay must be setup somehow.
+;; On initialization, the parent finds all
+;; descendent source events according to some
+;; marker and declares a communication relation.
+;; This stateful connection is established at
+;; the root of the innitialization process,
+;; after the communication graph is declared.
+
+;; Given a tree of layout elements and
+;; event source elements, ...
